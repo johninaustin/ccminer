@@ -632,6 +632,52 @@ void proper_exit(int reason)
 	exit(reason);
 }
 
+void hexDump (char *desc, void *addr, int len) {
+    int i;
+    unsigned char buff[17];
+    unsigned char *pc = (unsigned char*)addr;
+
+    // Output description if given.
+    if (desc != NULL)
+        printf ("%s:\n", desc);
+
+    if (len == 0) {
+        printf("  ZERO LENGTH\n");
+        return;
+    }
+    if (len < 0) {
+        printf("  NEGATIVE LENGTH: %i\n",len);
+        return;
+    }
+
+    // Process every byte in the data.
+    for (i = 0; i < len; i++) {
+        // Multiple of 16 means new line (with line offset).
+
+        if ((i % 16) == 0) {
+            // Just don't print ASCII for the zeroth line.
+            if (i != 0)
+                printf ("  \n");
+        }
+
+        // Now the hex code for the specific character.
+        if ((i%4)==0)
+            printf(" ");
+        printf ("%02x", pc[i]);
+
+    }
+
+    // Pad out last line if not exactly 16 characters.
+    while ((i % 16) != 0) {
+        printf ("   ");
+        i++;
+    }
+
+    // And print the final ASCII bit.
+    printf ("  \n\n");
+}
+
+
 bool jobj_binary(const json_t *obj, const char *key, void *buf, size_t buflen)
 {
 	const char *hexstr;
@@ -689,24 +735,8 @@ static bool work_decode(const json_t *val, struct work *work)
 	int adata_sz, atarget_sz = ARRAY_SIZE(work->target);
 	int i;
 
-	switch (opt_algo) {
-	case ALGO_DECRED:
-		data_size = 192;
-		adata_sz = 180/4;
-		break;
-	case ALGO_NEOSCRYPT:
-	case ALGO_ZR5:
-		data_size = 80;
-		adata_sz = data_size / 4;
-		break;
-	case ALGO_CRYPTOLIGHT:
-	case ALGO_CRYPTONIGHT:
-	case ALGO_WILDKECCAK:
-		return rpc2_job_decode(val, work);
-	default:
-		data_size = 128;
-		adata_sz = data_size / 4;
-	}
+	data_size = 184;
+	adata_sz = data_size / 4;
 
 	if (!jobj_binary(val, "data", work->data, data_size)) {
 		json_t *obj = json_object_get(val, "data");
@@ -723,16 +753,13 @@ static bool work_decode(const json_t *val, struct work *work)
 		}
 	}
 
+
 	if (!jobj_binary(val, "target", work->target, target_size)) {
 		applog(LOG_ERR, "JSON invalid target");
 		return false;
 	}
 
-	if (opt_algo == ALGO_HEAVY) {
-		if (unlikely(!jobj_binary(val, "maxvote", &work->maxvote, sizeof(work->maxvote)))) {
-			work->maxvote = 2048;
-		}
-	} else work->maxvote = 0;
+	work->maxvote = 0;
 
 	for (i = 0; i < adata_sz; i++)
 		work->data[i] = le32dec(work->data + i);
@@ -805,6 +832,13 @@ static bool work_decode(const json_t *val, struct work *work)
 		}
 		cbin2hex(work->job_id, (const char*)&work->data[34], 4);
 	}
+	// JOHN
+	work->data[45]=0x00008000;
+	work->data[46]=0x00000000;
+	work->data[47]=0xA8050000;
+	//hexDump("LE ready", &work->data[0], 192);
+	
+//	printf("\n");
 
 	return true;
 }
@@ -1187,7 +1221,8 @@ static bool get_mininginfo(CURL *curl, struct work *work)
 	if (have_stratum || have_longpoll || !allow_mininginfo)
 		return false;
 
-	json_t *val = json_rpc_call_pool(curl, pool, info_req, false, false, &curl_err);
+//	json_t *val = json_rpc_call_pool(curl, pool, info_req, false, false, &curl_err);
+json_t *val=NULL;
 
 	if (!val && curl_err == -1) {
 		allow_mininginfo = false;

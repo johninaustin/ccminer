@@ -11,7 +11,7 @@
 #include <miner.h>
 
 __constant__ static uint32_t __align__(8) c_midstate76[8];
-__constant__ static uint32_t __align__(8) c_dataEnd80[4];
+__constant__ static uint32_t __align__(8) c_dataEnd80[20];
 
 const __constant__  uint32_t __align__(8) c_H256[8] = {
 	0x6A09E667U, 0xBB67AE85U, 0x3C6EF372U, 0xA54FF53AU,
@@ -386,41 +386,108 @@ void sha256d_gpu_hash_shared(const uint32_t threads, const uint32_t startNonce, 
 	if (thread < threads)
 	{
 		const uint32_t nonce = startNonce + thread;
-
 		uint32_t dat[16];
-		AS_UINT2(dat) = AS_UINT2(c_dataEnd80);
+		dat[ 0] = c_dataEnd80[0];
+		dat[ 1] = c_dataEnd80[1];
 		dat[ 2] = c_dataEnd80[2];
 		dat[ 3] = nonce;
-		dat[ 4] = 0x80000000;
-		dat[15] = 0x280;
-		#pragma unroll
-		for (int i=5; i<15; i++) dat[i] = 0;
-
+		dat[ 4] = c_dataEnd80[4];
+		dat[ 5] = c_dataEnd80[5];
+		dat[ 6] = c_dataEnd80[6];
+		dat[ 7] = c_dataEnd80[7];
+		dat[ 8] = c_dataEnd80[8];
+		dat[ 9] = c_dataEnd80[9];
+		dat[10] = c_dataEnd80[10];
+		dat[11] = c_dataEnd80[11];
+		dat[12] = c_dataEnd80[12];
+		dat[13] = c_dataEnd80[13];
+		dat[14] = c_dataEnd80[14];
+		dat[15] = c_dataEnd80[15];
+//		#pragma unroll
+//		for (int i = 4; i < 16; i++) dat[i] = c_dataEnd80[i];
 		uint32_t buf[8];
-		#pragma unroll
-		for (int i=0; i<8; i+=2) AS_UINT2(&buf[i]) = AS_UINT2(&c_midstate76[i]);
-		//for (int i=0; i<8; i++) buf[i] = c_midstate76[i];
 
+		buf[0]=c_midstate76[0];
+		buf[1]=c_midstate76[1];
+		buf[2]=c_midstate76[2];
+		buf[3]=c_midstate76[3];
+		buf[4]=c_midstate76[4];
+		buf[5]=c_midstate76[5];
+		buf[6]=c_midstate76[6];
+		buf[7]=c_midstate76[7];
+//		#pragma unroll
+//		for (int i=0; i<8; i++) buf[i] = c_midstate76[i];
 		sha256_round_body(dat, buf, s_K);
 
+		// buf now contains the H1 for the next round
 		// second sha256
+	//	#pragma unroll
+	//	for (int i = 0; i < 4; i++) dat[i] = c_dataEnd80[i+16];
+//              #pragma unroll
+//              for (int i=4; i<12; i++) dat[i] = 0x00000000;
 
-		#pragma unroll
-		for (int i=0; i<8; i++) dat[i] = buf[i];
+		dat[0]=c_dataEnd80[16];
+		dat[1]=c_dataEnd80[17];
+		dat[2]=c_dataEnd80[18];
+		dat[3]=c_dataEnd80[19];
+		dat[4]=0;
+		dat[5]=0;
+		dat[6]=0;
+		dat[7]=0;
+		dat[8]=0;
+		dat[9]=0;
+		dat[10]=0;
+		dat[11]=0;
+		dat[12]=0xffffffff;
+		dat[13]=0x00800000;
+		dat[14]=0x00000000;
+		dat[15]=0x000005A8;
+	
+
+		sha256_round_body(dat, buf, s_K);
+		
+		//#pragma unroll
+		//for (int i=0; i<8; i++) dat[i] = buf[i];
+//                #pragma unroll
+ //               for (int i=9; i<15; i++) dat[i] = 0;
+		dat[0]=buf[0];
+		dat[1]=buf[1];
+		dat[2]=buf[2];
+		dat[3]=buf[3];
+		dat[4]=buf[4];
+		dat[5]=buf[5];
+		dat[6]=buf[6];
+		dat[7]=buf[7];
 		dat[8] = 0x80000000;
-		#pragma unroll
-		for (int i=9; i<15; i++) dat[i] = 0;
+		dat[9] = 0;
+		dat[10] = 0;
+		dat[11] = 0;
+		dat[12] = 0;
+		dat[13] = 0;
+		dat[14] = 0;
 		dat[15] = 0x100;
-
-		#pragma unroll
-		for (int i=0; i<8; i++) buf[i] = c_H256[i];
+		
+		buf[0]=c_H256[0];
+		buf[1]=c_H256[1];
+		buf[2]=c_H256[2];
+		buf[3]=c_H256[3];
+		buf[4]=c_H256[4];
+		buf[5]=c_H256[5];
+		buf[6]=c_H256[6];
+		buf[7]=c_H256[7];
+//		#pragma unroll
+//		for (int i=0; i<8; i++) buf[i] = c_H256[i];
 
 		sha256_round_last(dat, buf, s_K);
+		//sha256_round_body(dat, buf, s_K);
 
 		// valid nonces
 		uint64_t high = cuda_swab32ll(((uint64_t*)buf)[3]);
 		if (high <= c_target[0]) {
+		//if (buf[7]==0) {
 			//printf("%08x %08x - %016llx %016llx - %08x %08x\n", buf[7], buf[6], high, d_target[0], c_target[1], c_target[0]);
+			printf("hash: %08x %08x %08x %08x %08x %08x %08x %08x\n", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7]);
+			printf("Nonce: %u\n", nonce);
 			resNonces[1] = atomicExch(resNonces, nonce);
 			//d_target[0] = high;
 		}
@@ -445,11 +512,17 @@ void sha256d_free(int thr_id)
 __host__
 void sha256d_setBlock_80(uint32_t *pdata, uint32_t *ptarget)
 {
-	uint32_t _ALIGN(64) in[16], buf[8], end[4];
+	uint32_t _ALIGN(64) in[16], buf[8], end[20];
 	for (int i=0;i<16;i++) in[i] = cuda_swab32(pdata[i]);
 	for (int i=0;i<8;i++) buf[i] = cpu_H256[i];
-	for (int i=0;i<4;i++) end[i] = cuda_swab32(pdata[16+i]);
+	for (int i=0;i<20;i++) end[i] = cuda_swab32(pdata[16+i]);
+	//printf("midstate input:\n");
+//	for (int i = 0; i < 16; i++) {
+//		printf("%08x ", pdata[i]);
+//	}
+//	printf("\n");
 	sha256_round_body_host(in, buf, cpu_K);
+//	printf("Midstate: %08x %08x %08x %08x %08x %08x %08x %08x\n", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7]);
 
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol(c_midstate76, buf, 32, 0, cudaMemcpyHostToDevice));
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol(c_dataEnd80,  end, sizeof(end), 0, cudaMemcpyHostToDevice));

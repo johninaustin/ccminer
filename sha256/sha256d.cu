@@ -10,16 +10,27 @@
 // CPU Check
 extern "C" void sha256d_hash(void *output, const void *input)
 {
+//	printf("calculated hash on host: input: \n");
+//	for (int i = 0; i < 181; i+=4) {
+//		
+//		printf("%02x%02x%02x%02x ", ((unsigned char* )input)[i],((unsigned char* )input)[i+1],((unsigned char* )input)[i+2],((unsigned char* )input)[i+3]);
+//	}
+	//printf("\n");
 	unsigned char _ALIGN(64) hash[64];
 	SHA256_CTX sha256;
 
 	SHA256_Init(&sha256);
-	SHA256_Update(&sha256, (unsigned char *)input, 80);
+	SHA256_Update(&sha256, (unsigned char *)input, 181);
 	SHA256_Final(hash, &sha256);
 
 	SHA256_Init(&sha256);
 	SHA256_Update(&sha256, hash, 32);
 	SHA256_Final((unsigned char *)output, &sha256);
+//	printf("calculated hash on host: output: \n");
+//        for (int i = 0; i < 32; i+=4) {
+//		printf("%02x%02x%02x%02x ", ((unsigned char* )output)[i],((unsigned char* )output)[i+1],((unsigned char* )output)[i+2],((unsigned char* )output)[i+3]);
+ //       }
+
 }
 
 static bool init[MAX_GPUS] = { 0 };
@@ -30,7 +41,12 @@ extern void sha256d_hash_80(int thr_id, uint32_t threads, uint32_t startNonce, u
 
 extern "C" int scanhash_sha256d(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done)
 {
-	uint32_t _ALIGN(64) endiandata[20];
+//	for (int i = 0; i < 48; i++) {
+//		printf("%08x ", work->data[i]);
+//	}
+//	printf("\n");
+	//uint32_t _ALIGN(64) endiandata[20];
+	uint32_t _ALIGN(64) endiandata[48];
 	uint32_t *pdata = work->data;
 	uint32_t *ptarget = work->target;
 	const uint32_t first_nonce = pdata[19];
@@ -56,8 +72,9 @@ extern "C" int scanhash_sha256d(int thr_id, struct work* work, uint32_t max_nonc
 		init[thr_id] = true;
 	}
 
-	for (int k=0; k < 19; k++)
+	for (int k=0; k < 46; k++)
 		be32enc(&endiandata[k], pdata[k]);
+
 
 	sha256d_setBlock_80(endiandata, ptarget);
 
@@ -92,6 +109,11 @@ extern "C" int scanhash_sha256d(int thr_id, struct work* work, uint32_t max_nonc
 				gpu_increment_reject(thr_id);
 				if (!opt_quiet)
 					gpulog(LOG_WARNING, thr_id, "result for %08x does not validate on CPU!", work->nonces[0]);
+//				printf("Hash: ");
+//				for (int i=0; i < 8; i++) {
+//					printf("%08x", vhash[i]);
+//				}
+//				printf("\n");
 				pdata[19] = work->nonces[0] + 1;
 				continue;
 			}
